@@ -34,6 +34,14 @@ int main(int argc, char* argv[]) {
   printf("Cluster size: %d\n", sc.cluster.Len());
   printf("Motif conductance in largest CC: %f\n", sc.cond);
   printf("Eigenvalue: %f\n", sc.eig);
+
+  TStr base_name = ("./" + graph_filename).RightOfLast('/').LeftOfLast('.');
+  TStr output_name = base_name + "-" + motif + "-cluster.txt";
+  FILE* F = fopen(output_name.CStr(),"wt");
+  for (int i = 0; i < sc.cluster.Len(); i++) {
+    int index = sc.cluster[i];  
+    fprintf(F, "%d\n", index);
+  }
   
   Catch
   printf("\nrun time: %s (%s)\n", ExeTm.GetTmStr(),
