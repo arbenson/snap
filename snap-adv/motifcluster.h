@@ -37,11 +37,13 @@ enum MotifType {
 // Container for sweep cut data.
 class TSweepCut {
  public:
-  TIntV cluster;        // Set of indices forming cluster
-  double cond;          // conductance of the cluster
-  double eig;           // Eigenvalue of Fiedler vector
-  TFltV sweep_profile;  // Sweep profile: kth entry is conductance(Sk)
-  TCnCom component;     // connected component that the cut runs on
+  TIntV cluster;            // Set of indices forming cluster
+  TIntV complement;         // Set of indices forming complement cluster
+  TCnComV conn_components;  // Connected components of the motif adjacency matrix
+  int lcc_index;            // Index of largest connected component
+  double cond;              // Conductance of the cluster
+  double eig;               // Eigenvalue of Fiedler vector
+  TFltV sweep_profile;      // Sweep profile: kth entry is conductance(Sk)
 };
 
 // Wrapper around ARPACK for computing the smallest algebraic eigenvalues of a
@@ -78,7 +80,8 @@ class MotifCluster {
   // The variables tol and maxiter control the stopping tolerance and maximum
   // number of iterations used by the eigensolver.
   static void SpectralCut(const WeightVH& weights, TSweepCut& sweepcut,
-			  double tol=kDefaultTol, int maxiter=kMaxIter);
+			  const TBoolV& valid_nodes, double tol=kDefaultTol,
+			  int maxiter=kMaxIter);
 
   // Compute the normalized Fiedler vector for the normalized Laplacian of the
   // graph corresponding to the nonnegative matrix W and store the result in
@@ -122,6 +125,14 @@ class MotifCluster {
   // (reciprocated edge neighbors are only counted once).
   static void DegreeOrdering(PNGraph graph, TIntV& order);
 
+  // Write the clusters found by the sweep cut to a file.  The sweep cut
+  // generates a cluster S, a complement cluster Sbar of size at least as large
+  // as S, and (possibly) connected components.  The file writes one cluster per
+  // line with node ids tab-separated.  The first cluster written is S and the
+  // second cluster is Sbar.
+  static void WriteSweepCutClusters(const TStr& filename,
+				    const TSweepCut& sweepcut);
+    
  private:
   // Handles MotifAdjacency() functionality for simple edges..
   static void EdgeMotifAdjacency(PNGraph graph, WeightVH& weights);

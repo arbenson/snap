@@ -185,7 +185,7 @@ bool MotifCluster::IsMotifM13(PNGraph graph, int center, int v, int w) {
 void MotifCluster::DegreeOrdering(PNGraph graph, TIntV& order) {
   // Note: This is the most efficient when the nodes are numbered
   // 0, 1, ..., num_nodes - 1.
-  int max_nodes = graph->GetMxNId() + 1;
+  int max_nodes = graph->GetMxNId();
   TVec< TKeyDat<TInt, TInt> > degrees(max_nodes);
   degrees.PutAll(TKeyDat<TInt, TInt>(0, 0));
   // Set the degree of a node to be the number of nodes adjacent to the node in
@@ -470,7 +470,7 @@ void MotifCluster::EdgeMotifAdjacency(PUNGraph graph, WeightVH& weights) {
 // Motif adjacency formation
 void MotifCluster::MotifAdjacency(PNGraph graph, MotifType motif,
 				  WeightVH& weights) {
-  weights = WeightVH(graph->GetMxNId() + 1);
+  weights = WeightVH(graph->GetMxNId());
   switch (motif) {
   case M1:
   case M2:
@@ -509,7 +509,7 @@ void MotifCluster::CliqueMotifAdjacency(PUNGraph graph, int clique_size,
 
 void MotifCluster::MotifAdjacency(PUNGraph graph, MotifType motif,
                                   WeightVH& weights) {
-  weights = WeightVH(graph->GetMxNId() + 1);
+  weights = WeightVH(graph->GetMxNId());
   switch (motif) {
   case triangle:
   case clique3:
@@ -554,7 +554,7 @@ void ChibaNishizekiWeighter::Initialize(int k) {
   PUNGraph kcore = TSnap::GetKCore(orig_graph_, k - 1);
   TSnap::DelSelfEdges(kcore);
   int max_nodes = kcore->GetMxNId();
-  for (int i = 0; i <= max_nodes; i++) {
+  for (int i = 0; i < max_nodes; i++) {
     if (!kcore->IsNode(i)) {
       kcore->AddNode(i);
     }
@@ -695,6 +695,22 @@ void ChibaNishizekiWeighter::CliqueEnum(int k, const TIntV& U) {
   }
 }
 
+static void ValidNodes(PNGraph graph, TBoolV& node_vec) {
+  node_vec.Gen(graph->GetMxNId());
+  node_vec.PutAll(false);
+  for (TNGraph::TNodeI it = graph->BegNI(); it < graph->EndNI(); it++) {
+    node_vec[it.GetId()] = true;
+  }
+}
+
+static void ValidNodes(PUNGraph graph, TBoolV& node_vec) {
+  node_vec.Gen(graph->GetMxNId());
+  node_vec.PutAll(false);
+  for (TUNGraph::TNodeI it = graph->BegNI(); it < graph->EndNI(); it++) {
+    node_vec[it.GetId()] = true;
+  }
+}
+
 
 /////////////////////////////////////////////////
 // Spectral stuff
@@ -703,7 +719,9 @@ void MotifCluster::GetMotifCluster(PNGraph graph, MotifType motif,
 				   int maxiter) {
   WeightVH weights;
   MotifAdjacency(graph, motif, weights);
-  SpectralCut(weights, sweepcut, tol, maxiter);
+  TBoolV valid_nodes;
+  ValidNodes(graph, valid_nodes);
+  SpectralCut(weights, sweepcut, valid_nodes, tol, maxiter);
 }
 
 void MotifCluster::GetMotifCluster(PUNGraph graph, MotifType motif,
@@ -711,7 +729,9 @@ void MotifCluster::GetMotifCluster(PUNGraph graph, MotifType motif,
 				   int maxiter) {
   WeightVH weights;
   MotifAdjacency(graph, motif, weights);
-  SpectralCut(weights, sweepcut, tol, maxiter);
+  TBoolV valid_nodes;
+  ValidNodes(graph, valid_nodes);  
+  SpectralCut(weights, sweepcut, valid_nodes, tol, maxiter);
 }
 
 double MotifCluster::NFiedlerVector(const TSparseColMatrix& W, TFltV& fvec,
@@ -769,19 +789,22 @@ double MotifCluster::NFiedlerVector(const TSparseColMatrix& W, TFltV& fvec,
 
 // Given a vector of hashmaps representing weights in a graph, construct the
 // undirected, unweighted. graph with the same network structure.
-static PUNGraph UnweightedGraphRepresentation(const WeightVH& weights) {
+static PUNGraph UnweightedGraphRepresentation(const WeightVH& weights,
+					      const TBoolV& valid_nodes) {
   int num_edges = 0;
   for (int i = 0; i < weights.Len(); i++) {
     num_edges += weights[i].Len();
   }
   PUNGraph graph = TUNGraph::New(weights.Len(), num_edges);
   for (int i = 0; i < weights.Len(); i++) {
-    graph->AddNode(i);
+    if (valid_nodes[i]) {
+      graph->AddNode(i);
+    }
   }
   for (int i = 0; i < weights.Len(); i++) {
     const THash<TInt, TInt>& edge_list = weights[i];
     for (THash<TInt, TInt>::TIter it = edge_list.BegI(); it < edge_list.EndI();
-	 it++) {    
+	 it++) {
       graph->AddEdge(i, it->Key);
     }
   }
@@ -869,22 +892,24 @@ static void Sweep(const TSparseColMatrix& W, const TFltV& fvec, TFltV& conds,
 }
 
 void MotifCluster::SpectralCut(const WeightVH& weights, TSweepCut& sweepcut,
-			       double tol, int maxiter) {
+			       const TBoolV& valid_nodes, double tol,
+			       int maxiter) {
   // Form graph and get maximum component
-  PUNGraph graph = UnweightedGraphRepresentation(weights);
+  PUNGraph graph = UnweightedGraphRepresentation(weights, valid_nodes);
   TCnComV components;
   TSnap::GetWccs(graph, components);
-  int max_wcc_size = 0;
-  int max_wcc_ind = -1;
+  int largest_wcc_size = 0;
+  int largest_wcc_ind = -1;
   for (int i = 0; i < components.Len(); i++) {
     int size = components[i].Len();
-    if (size > max_wcc_size) {
-      max_wcc_size = size;
-      max_wcc_ind = i;
+    if (size > largest_wcc_size) {
+      largest_wcc_size = size;
+      largest_wcc_ind = i;
     }
   }
-  TCnCom comp = components[max_wcc_ind];
-  sweepcut.component = comp;
+  sweepcut.conn_components = components;
+  sweepcut.lcc_index = largest_wcc_ind;
+  TCnCom comp = components[largest_wcc_ind];
   if (comp.Len() == 1) {
     printf("WARNING: No non-trivial connected components "
 	   "(likely due to no instances of the motif)\n");
@@ -893,7 +918,6 @@ void MotifCluster::SpectralCut(const WeightVH& weights, TSweepCut& sweepcut,
     return;
   }
   
-
   // Map largest connected component to a matrix, keeping track of ids.
   THash<TInt, TInt> id_map;
   TIntV rev_id_map;
@@ -939,17 +963,23 @@ void MotifCluster::SpectralCut(const WeightVH& weights, TSweepCut& sweepcut,
     }
   }
   sweepcut.cond = min_cond;
-  TIntV cluster;
-  int start = 0;
-  int end = min_ind + 1;
-  if (end >= conds.Len() / 2) {
-    start = min_ind + 1;
-    end = conds.Len() + 1;
+
+  // Assign the cluster to be the smaller set from the sweep cut.  Keep the
+  // other nodes as the complement set.
+  TIntV cluster1, cluster2;
+  for (int i = 0; i <= min_ind; i++) {
+    cluster1.Add(rev_id_map[order[i]]);        
   }
-  for (int i = start; i < end; i++) {
-    cluster.Add(rev_id_map[order[i]]);    
+  for (int i = min_ind + 1; i < conds.Len() + 1; i++) {
+    cluster2.Add(rev_id_map[order[i]]);
   }
-  sweepcut.cluster = cluster;
+  if (cluster1.Len() <= cluster2.Len()) {
+    sweepcut.cluster = cluster1;
+    sweepcut.complement = cluster2;
+  } else {
+    sweepcut.cluster = cluster2;
+    sweepcut.complement = cluster1;
+  }
 }
 
 void SymeigsSmallest(const TSparseColMatrix& A, int nev, TFltV& evals,
@@ -1070,4 +1100,29 @@ void SymeigsSmallest(const TSparseColMatrix& A, int nev, TFltV& evals,
   delete[] workl;
   delete[] select;
   delete[] d;
+}
+
+static void WriteClusterLine(FILE* F, const TIntV& cluster) {
+  int N = cluster.Len();
+  for (int i = 0; i < N; i++) {
+    int node_id = cluster[i];
+    fprintf(F, "%d", node_id);
+    if (i < N - 1) {
+      fprintf(F, "\t");
+    } else {
+      fprintf(F, "\n");
+    }
+  }
+}
+
+void MotifCluster::WriteSweepCutClusters(const TStr& filename,
+					 const TSweepCut& sweepcut) {
+  FILE* F = fopen(filename.CStr(), "wt");
+  WriteClusterLine(F, sweepcut.cluster);
+  WriteClusterLine(F, sweepcut.complement);
+  for (int i = 0; i < sweepcut.conn_components.Len(); i++) {
+    if (i != sweepcut.lcc_index) {
+      WriteClusterLine(F, sweepcut.conn_components[i].NIdV);
+    }
+  }
 }

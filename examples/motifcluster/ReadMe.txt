@@ -10,7 +10,9 @@ Users can specify one of the following motif types:
 -"edge" for standard spectral clustering on the undirected version of the graph
 
 The methodology of the algorithm is explained in the following paper:
-Austin R. Benson, David F. Gleich, and Jure Leskovec, Higher-order Organization of Complex Networks, 2016.
+Higher-order Organization of Complex Networks,
+Austin R. Benson, David F. Gleich, and Jure Leskovec,
+Science, vol. 353, no. 6295, pp. 163-166, 2016.
 
 The code works under Windows with Visual Studio or Cygwin with GCC,
 Mac OS X, Linux and other Unix variants with GCC. Make sure that a
@@ -25,6 +27,7 @@ are using homebrew, you can run "brew install arpack" to install this library.
 Parameters:
    -i:Input edgelist file name (default:'../as20graph.txt')
    -m:Motif type  (default:'M4')
+   -o:Output filename
 /////////////////////////////////////////////////////////////////////////////
 Usage:
 
